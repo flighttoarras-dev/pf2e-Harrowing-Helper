@@ -105,6 +105,12 @@ If you edited a macro or journal from inside Foundry (which writes to the compil
 npm run unpack
 ```
 
+> **Note:** `npm run unpack` reads the *compiled* pack, so any `{{MODULE_VERSION}}` placeholder (see below) will come back as a literal version number instead of the placeholder. If that happens, just swap it back to `{{MODULE_VERSION}}` in the JSON before committing.
+
+**Version stamping**
+
+Macro `command` text and the documentation journal use a `{{MODULE_VERSION}}` placeholder (e.g. `Harrowing (PF2e) — v{{MODULE_VERSION}}`) instead of a hardcoded version number. Every time `npm run pack` runs, it reads `module.json`'s `"version"` field and stamps it into any string containing that placeholder in the *compiled* pack - the JSON source keeps the literal placeholder. So bumping the version is just: update `module.json`, run `npm run pack`. The release workflow (`.github/workflows/release.yml`) does this automatically using the release tag.
+
 **Editing the documentation journal**
 
 The documentation journal's page content is authored as HTML in `source/documentation.html` (much easier to edit than an HTML string embedded in JSON). After editing it, run:

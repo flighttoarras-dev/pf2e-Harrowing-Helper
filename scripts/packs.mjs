@@ -10,6 +10,15 @@
  *
  * Pack definitions are read straight from module.json, so adding/removing a
  * compendium there is all that's needed to pick it up here too.
+ *
+ * Version stamping: any string field in the JSON source (macro `command`
+ * text, journal page HTML, etc.) containing the literal placeholder
+ * "{{MODULE_VERSION}}" gets that placeholder replaced with the current
+ * module.json "version" value whenever `pack` runs. This means macros/docs
+ * never need their embedded "vX.Y.Z" text hand-edited - bump the version in
+ * module.json (or let the release workflow do it) and run `npm run pack`.
+ * The placeholder is only replaced in the compiled LevelDB output; the
+ * checked-in JSON source keeps the literal placeholder.
  */
 
 import { compilePack, extractPack } from "@foundryvtt/foundryvtt-cli";
@@ -20,9 +29,14 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const SOURCE_ROOT = path.join(ROOT, "packs", "_source");
+const VERSION_PLACEHOLDER = "{{MODULE_VERSION}}";
+
+async function loadModuleJson() {
+    return JSON.parse(await fs.readFile(path.join(ROOT, "module.json"), "utf8"));
+}
 
 async function loadPacks() {
-    const moduleJson = JSON.parse(await fs.readFile(path.join(ROOT, "module.json"), "utf8"));
+    const moduleJson = await loadModuleJson();
     if (!Array.isArray(moduleJson.packs) || moduleJson.packs.length === 0) {
         throw new Error("No packs found in module.json");
     }
@@ -56,6 +70,31 @@ async function tryClean(dir) {
     await fs.mkdir(dir, { recursive: true });
 }
 
+// Recursively replaces VERSION_PLACEHOLDER in every string field of a
+// document (in place), so it works regardless of which field a given
+// document type stores its text in (macro `command`, journal page
+// `text.content`, etc.).
+function stampVersion(node, version) {
+    if (Array.isArray(node)) {
+        for (let i = 0; i < node.length; i++) {
+            if (typeof node[i] === "string") {
+                if (node[i].includes(VERSION_PLACEHOLDER)) node[i] = node[i].split(VERSION_PLACEHOLDER).join(version);
+            } else if (node[i] && typeof node[i] === "object") {
+                stampVersion(node[i], version);
+            }
+        }
+    } else if (node && typeof node === "object") {
+        for (const key of Object.keys(node)) {
+            const val = node[key];
+            if (typeof val === "string") {
+                if (val.includes(VERSION_PLACEHOLDER)) node[key] = val.split(VERSION_PLACEHOLDER).join(version);
+            } else if (val && typeof val === "object") {
+                stampVersion(val, version);
+            }
+        }
+    }
+}
+
 async function unpack() {
     const packs = await loadPacks();
     for (const pack of packs) {
@@ -71,6 +110,8 @@ async function unpack() {
 }
 
 async function pack() {
+    const moduleJson = await loadModuleJson();
+    const version = moduleJson.version;
     const packs = await loadPacks();
     for (const pack of packs) {
         if (!(await pathExists(pack.sourceDir))) {
@@ -79,8 +120,13 @@ async function pack() {
         }
         await tryClean(pack.compiledDir);
 
-        console.log(`Packing "${pack.name}" -> ${path.relative(ROOT, pack.compiledDir)}`);
-        await compilePack(pack.sourceDir, pack.compiledDir, { log: true });
+        console.log(`Packing "${pack.name}" -> ${path.relative(ROOT, pack.compiledDir)} (version ${version})`);
+        await compilePack(pack.sourceDir, pack.compiledDir, {
+            log: true,
+            transformEntry: (entry) => {
+                stampVersion(entry, version);
+            },
+        });
     }
 }
 
