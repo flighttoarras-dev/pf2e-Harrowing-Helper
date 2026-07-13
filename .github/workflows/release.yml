@@ -1,0 +1,75 @@
+name: Release Creation
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # Needed so GITHUB_TOKEN can upload assets to the release below, even if
+    # this repo/org has default workflow permissions set to read-only.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      # module.json's "version" field (and the version stamped into macros/
+      # docs below) should not carry a leading "v" even if the release tag
+      # does - strip it here so both conventions are satisfied.
+      - name: Determine version
+        id: version
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "number=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      # Substitute the manifest/download URLs and version in module.json
+      # with ones pointing at this specific release, *before* building packs
+      # below, so the compiled macros/docs pick up the real version too.
+      - name: Substitute Manifest and Download Links For Versioned Ones
+        id: sub_manifest_link_version
+        uses: microsoft/variable-substitution@v1
+        with:
+          files: 'module.json'
+        env:
+          version: ${{ steps.version.outputs.number }}
+          url: https://github.com/${{ github.repository }}
+          manifest: https://github.com/${{ github.repository }}/releases/latest/download/module.json
+          download: https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/module.zip
+
+      # Compiles packs/_source/*.json (plaintext, committed to git) into the
+      # LevelDB packs/<name> directories Foundry actually loads. Those
+      # compiled directories are gitignored, so this step must run before
+      # zipping the release. It also stamps the version from module.json
+      # (just updated above) into any macro/journal text using the
+      # "{{MODULE_VERSION}}" placeholder - see scripts/packs.mjs.
+      - name: Build Packs
+        run: npm run pack
+
+      # Create a zip file with all files required by the module.
+      # packs/_source is JSON dev source, not needed at runtime, so it's excluded.
+      - name: Create module.zip
+        run: zip -r ./module.zip module.json LICENSE scripts/ packs/ -x "packs/_source/*"
+
+      # Create/update the GitHub release with the built files attached.
+      - name: Update Release with Files
+        id: create_version_release
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true # Set this to false if you want to prevent updating existing releases
+          name: ${{ github.event.release.name }}
+          draft: false
+          prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}
+          artifacts: './module.json, ./module.zip'
+          tag: ${{ github.event.release.tag_name }}
+          body: ${{ github.event.release.body }}

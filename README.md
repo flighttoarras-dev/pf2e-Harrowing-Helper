@@ -74,6 +74,56 @@ Full setup and configuration details are in the **Harrowing Helper — Documenta
 
 ---
 
+## Development
+
+Compendium packs (**macros**, **documentation**) are stored two ways:
+
+- `packs/_source/<pack-name>/*.json` — plaintext JSON, one file per document. This is the source of truth and what's committed to git.
+- `packs/<pack-name>/` — the compiled LevelDB pack that Foundry actually loads. It's a generated build artifact (gitignored) — don't edit it directly.
+
+Conversion between the two is handled by [`@foundryvtt/foundryvtt-cli`](https://github.com/foundryvtt/foundryvtt-cli) via `scripts/packs.mjs`, which reads the pack list straight from `module.json`.
+
+**Setup**
+
+```
+npm install
+```
+
+**Edit compendium content**
+
+Edit the JSON files under `packs/_source/`, then compile them into the LevelDB packs Foundry reads:
+
+```
+npm run pack
+```
+
+**Pull changes made in Foundry back into JSON**
+
+If you edited a macro or journal from inside Foundry (which writes to the compiled LevelDB pack), extract those changes back to plaintext JSON so they can be committed:
+
+```
+npm run unpack
+```
+
+> **Note:** `npm run unpack` reads the *compiled* pack, so any `{{MODULE_VERSION}}` placeholder (see below) will come back as a literal version number instead of the placeholder. If that happens, just swap it back to `{{MODULE_VERSION}}` in the JSON before committing.
+
+**Version stamping**
+
+Macro `command` text and the documentation journal use a `{{MODULE_VERSION}}` placeholder (e.g. `Harrowing (PF2e) — v{{MODULE_VERSION}}`) instead of a hardcoded version number. Every time `npm run pack` runs, it reads `module.json`'s `"version"` field and stamps it into any string containing that placeholder in the *compiled* pack - the JSON source keeps the literal placeholder. So bumping the version is just: update `module.json`, run `npm run pack`. The release workflow (`.github/workflows/release.yml`) does this automatically using the release tag.
+
+**Editing the documentation journal**
+
+The documentation journal's page content is authored as HTML in `source/documentation.html` (much easier to edit than an HTML string embedded in JSON). After editing it, run:
+
+```
+node source/bake-docs.cjs
+npm run pack
+```
+
+This copies the HTML into `packs/_source/documentation/*.json`, then `npm run pack` compiles it into the LevelDB pack.
+
+---
+
 ## Compatibility
 
 | Version | Notes |
