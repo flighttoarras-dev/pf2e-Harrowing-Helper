@@ -116,11 +116,27 @@ Macro `command` text and the documentation journal use a `{{MODULE_VERSION}}` pl
 The documentation journal's page content is authored as HTML in `source/documentation.html` (much easier to edit than an HTML string embedded in JSON). After editing it, run:
 
 ```
-node source/bake-docs.cjs
+npm run bake-docs
 npm run pack
 ```
 
 This copies the HTML into `packs/_source/documentation/*.json`, then `npm run pack` compiles it into the LevelDB pack.
+
+**Editing macro code**
+
+Macro `command` text is likewise authored as plain, syntax-highlighted `.js` files instead of an escaped JSON string:
+
+- `source/macros/harrowing.js` — the **Harrowing** macro
+- `source/macros/harrowing-apply-effects.js` — the **Harrowing Apply Effects** macro
+
+After editing one, run:
+
+```
+npm run bake-macros
+npm run pack
+```
+
+`bake-macros` matches each `.js` file to its macro by name (see `MACRO_FILES` in `source/bake-macros.cjs`) and writes it into that macro's `command` field under `packs/_source/macros/`, then `npm run pack` compiles it into the LevelDB pack. No manual hand-off through Foundry's macro editor required.
 
 ---
 
@@ -128,7 +144,7 @@ This copies the HTML into `packs/_source/documentation/*.json`, then `npm run pa
 
 | Version | Notes |
 |---|---|
-| 1.0.11 | Current release |
+| 1.0.13 | Current release |
 | Foundry v13 | Verified |
 | PF2e v7.8+ | Verified |
 
