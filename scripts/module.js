@@ -87,30 +87,31 @@ function getAvailableHarrowingSuits(actor) {
         .filter((s) => s !== null);
 }
 
-/** Does this suit's reroll selector appear among the roll's active options? */
-function suitMatchesRollOptions(suit, rollOptions) {
-    if (suit === "crowns") return CROWNS_SELECTORS.some((sel) => rollOptions.includes(sel));
+/** Does this suit's reroll selector appear among the roll's domains? */
+function suitMatchesRollDomains(suit, domains) {
+    if (suit === "crowns") return CROWNS_SELECTORS.some((sel) => domains.includes(sel));
     const selector = SUIT_TO_SELECTOR_STOCK[suit];
-    return !!selector && rollOptions.includes(selector);
+    return !!selector && domains.includes(selector);
 }
 
-// NOTE: unverified against a live chat message -- `context.options` is assumed to
-// contain the roll's selector strings (the same options PF2e's own predicated rule
-// elements match against). If the badge never appears on a matching roll, check
-// this assumption first via `game.messages.contents.at(-1).flags.pf2e.context` in
-// the console.
+// `context.domains` holds the roll's bare selector strings (e.g. "will",
+// "saving-throw") -- the same list a FlatModifier's `selector` field matches
+// against. `context.options` is namespaced ("save:will:rank:0") and never
+// contains the bare selector, so it can't be used for this check. Confirmed
+// 2026-07-22 via a live Will save: domains: ["will", "wis-based",
+// "saving-throw", "all", "check", "will-check"].
 Hooks.on("renderChatMessageHTML", (message, html) => {
     try {
         if (html.dataset.harrowingBadged) return;
 
         const context = message.flags?.pf2e?.context;
-        const rollOptions = context?.options;
-        if (!message.isContentVisible || !Array.isArray(rollOptions)) return;
+        const domains = context?.domains;
+        if (!message.isContentVisible || !Array.isArray(domains)) return;
 
         const actor = ChatMessage.getSpeakerActor(message.speaker);
         if (!actor || !(game.user.isGM || actor.isOwner)) return;
 
-        const matches = getAvailableHarrowingSuits(actor).filter((s) => suitMatchesRollOptions(s.suit, rollOptions));
+        const matches = getAvailableHarrowingSuits(actor).filter((s) => suitMatchesRollDomains(s.suit, domains));
         if (!matches.length) return;
 
         html.dataset.harrowingBadged = "true";
