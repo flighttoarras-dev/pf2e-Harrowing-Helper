@@ -66,7 +66,24 @@ const CROWNS_SELECTORS = [
     "persistent-damage-recovery",
 ];
 
-/** Unused Harrowing effects on an actor, resolved to a suit key from the effect's name. */
+// Font Awesome is bundled with Foundry itself; PF2e's own reroll icons
+// (hero point, mythic point in check.ts) use this same fontAwesomeIcon
+// pattern, so no new image assets are needed for the suit symbols.
+const SUIT_ICON_CLASS = {
+    hammers: "fa-hammer",
+    keys: "fa-key",
+    shields: "fa-shield",
+    books: "fa-book",
+    stars: "fa-star",
+    crowns: "fa-crown",
+};
+
+/**
+ * Unused Harrowing effects on an actor, resolved to a suit key from the
+ * effect's name, plus the degree of success (+4/0/-4) baked into it at cast
+ * time -- see harrowing.js's `bonusFromDegree`. This value never changes
+ * after the fact, so a -4 effect will always worsen whatever it's used on.
+ */
 function getAvailableHarrowingSuits(actor) {
     if (!actor) return [];
     return (actor.items ?? [])
@@ -82,7 +99,9 @@ function getAvailableHarrowingSuits(actor) {
                 .split("(")[0]
                 .trim();
             const suit = Object.entries(SUIT_LABELS).find(([, l]) => l === label)?.[0];
-            return suit ? { suit, effectId: i.id } : null;
+            if (!suit) return null;
+            const degree = i.flags?.pf2e?.rulesSelections?.degreeOfSuccess ?? 0;
+            return { suit, effectId: i.id, degree };
         })
         .filter((s) => s !== null);
 }
@@ -92,6 +111,43 @@ function suitMatchesRollDomains(suit, domains) {
     if (suit === "crowns") return CROWNS_SELECTORS.some((sel) => domains.includes(sel));
     const selector = SUIT_TO_SELECTOR_STOCK[suit];
     return !!selector && domains.includes(selector);
+}
+
+/**
+ * Per-degree badge styling. Deliberately not color-only, for colorblind
+ * players: each tier is also distinguished by border presence/pattern and
+ * brightness, so the three are still distinct with zero color perception.
+ *   - Success (0): plain icon, no border -- the baseline/common case.
+ *   - Critical Success (+4): solid glowing ring, full brightness.
+ *   - Failure (-4): dashed border, dimmed/desaturated. There is no
+ *     Critical Failure case -- the macro's auto-safe-rank picker guarantees
+ *     a nat 1 can't produce one -- but plain Failure still gives the same
+ *     -4 as a crit failure would, so it still needs the "avoid" treatment.
+ */
+function badgeStyleForDegree(degree) {
+    if (degree > 0) {
+        return {
+            border: "2px solid #f2c94c",
+            boxShadow: "0 0 4px 1px #f2c94c",
+            opacity: "1",
+            filter: "none",
+        };
+    }
+    if (degree < 0) {
+        return {
+            border: "1px dashed #c0392b",
+            boxShadow: "none",
+            opacity: "0.55",
+            filter: "grayscale(70%)",
+        };
+    }
+    return { border: "none", boxShadow: "none", opacity: "1", filter: "none" };
+}
+
+function degreeLabel(degree) {
+    if (degree > 0) return "Critical Success";
+    if (degree < 0) return "Failure -- use with caution";
+    return "Success";
 }
 
 // `context.domains` holds the roll's bare selector strings (e.g. "will",
@@ -115,22 +171,52 @@ Hooks.on("renderChatMessageHTML", (message, html) => {
         if (!matches.length) return;
 
         html.dataset.harrowingBadged = "true";
-        const header = html.querySelector("header.message-header") ?? html;
-        for (const { suit } of matches) {
+
+        // Inserted as its own row *after* the header entirely, rather than
+        // appended inside it: the roll-type flavor text is itself the last
+        // grid row inside header.message-header's own CSS grid, so a plain
+        // appended child there gets auto-placed by the grid and can overlap
+        // that text instead of sitting below it.
+        const header = html.querySelector("header.message-header");
+        const row = document.createElement("div");
+        row.className = "harrowing-badge-row";
+        row.style.cssText = "display:flex;flex-wrap:wrap;gap:0.35em;margin:0.15em 0 0.35em 0;";
+
+        for (const { suit, effectId, degree } of matches) {
+            const style = badgeStyleForDegree(degree);
             const badge = document.createElement("span");
             badge.className = "harrowing-reroll-badge";
-            badge.dataset.tooltip = `Harrowing (${SUIT_LABELS[suit]}) reroll available`;
+            badge.dataset.effectId = effectId;
+            badge.dataset.suit = suit;
+            badge.dataset.degree = String(degree);
+            badge.dataset.tooltip = `Harrowing (${SUIT_LABELS[suit]}) reroll available -- ${degreeLabel(degree)}`;
             badge.style.cssText = [
                 "display:inline-flex",
                 "align-items:center",
                 "justify-content:center",
-                "width:1.1em",
-                "height:1.1em",
-                "margin-left:0.35em",
+                "width:1.4em",
+                "height:1.4em",
                 "border-radius:50%",
-                `background:${SUIT_COLOR[suit]}`,
+                "background:rgba(0,0,0,0.08)",
+                `border:${style.border}`,
+                `box-shadow:${style.boxShadow}`,
+                `opacity:${style.opacity}`,
+                `filter:${style.filter}`,
             ].join(";");
-            header.appendChild(badge);
+
+            const icon = document.createElement("i");
+            icon.className = `fa-solid ${SUIT_ICON_CLASS[suit]}`;
+            icon.style.color = SUIT_COLOR[suit];
+            icon.style.fontSize = "0.85em";
+
+            badge.appendChild(icon);
+            row.appendChild(badge);
+        }
+
+        if (header) {
+            header.insertAdjacentElement("afterend", row);
+        } else {
+            html.prepend(row);
         }
     } catch (err) {
         console.warn("Harrowing Helper | reroll-availability badge failed:", err);

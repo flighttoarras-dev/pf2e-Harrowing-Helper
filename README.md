@@ -144,7 +144,7 @@ npm run pack
 
 | Version | Notes |
 |---|---|
-| 1.0.14 | Current release |
+| 1.0.15 | Current release |
 | Foundry v13 | Verified |
 | PF2e v7.8+ | Verified |
 
