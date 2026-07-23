@@ -81,7 +81,7 @@ Full setup and configuration details are in the **Harrowing Helper — Documenta
 
 **Using a reroll**
 
-When a character has an unused Harrowing effect matching a roll they just made (e.g. a Will save with an unused Stars card), a small colored suit icon appears under that roll's chat card. Click it to reroll with the Harrowing bonus applied — this opens the normal roll dialog with the bonus pre-enabled, and only consumes that specific card, even if others of the same suit are also active.
+When a character has an unused Harrowing effect matching a roll they just made (e.g. a Will save with an unused Stars card), a small colored suit icon appears under that roll's chat card. Click it to reroll — this opens the normal roll dialog with the Harrowing bonus available to toggle on, and only consumes that specific card, even if others of the same suit are also active.
 
 <img width="337" alt="Harrowing reroll badges on a chat card" src="https://github.com/user-attachments/assets/438650fe-a3a8-4f19-bf7a-1c0057c0de56" />
 
