@@ -903,6 +903,21 @@ function getPartyActorUuids() {
       const data = baseEffect.toObject();
       const degreeValue = r.degreeValue;
 
+      // Unique per-card serial number. Every Harrowing card's FlatModifier
+      // otherwise shares the exact same predicate (["harrowing-reroll"],
+      // baked into the official compendium item) with no way to tell one
+      // card apart from another of the same suit -- so triggering "a"
+      // reroll for a suit triggers *every* active card of that suit at
+      // once, and PF2e's removeAfterRoll:"if-enabled" then deletes all of
+      // them together. Appending this token to each card's predicate lets
+      // a reroll target one specific card instead of every same-suit card.
+      const rerollToken = foundry.utils.randomID();
+      const addRerollToken = (rules) =>
+        rules.map((rule) => {
+          if (rule?.key !== "FlatModifier" || !rule.predicate?.includes("harrowing-reroll")) return rule;
+          return { ...rule, predicate: [...rule.predicate, `harrowing-reroll:${rerollToken}`] };
+        });
+
       // Apply suit-specific icon.
       data.img = SUIT_ICON[r.chosenSuit] ?? data.img;
 
@@ -917,6 +932,7 @@ function getPartyActorUuids() {
       data.flags.world ??= {};
       data.flags.world.harrowingBatch = true;
       data.flags.world.harrowingBatchSource = HARROWING_EFFECT_UUID;
+      data.flags.world.harrowingRerollToken = rerollToken;
 
       // Helper: seed degree ChoiceSet with this card's value.
       const seedDegreeChoiceSet = (rules) =>
@@ -932,12 +948,14 @@ function getPartyActorUuids() {
 
         data.flags.pf2e.rulesSelections = { degreeOfSuccess: degreeValue, suit: selector };
 
-        data.system.rules = data.system.rules.map((rule) => {
-          if (rule?.key !== "ChoiceSet") return rule;
-          if (rule.flag === "degreeOfSuccess") return { ...rule, selection: degreeValue };
-          if (rule.flag === "suit") return { ...rule, selection: selector };
-          return rule;
-        });
+        data.system.rules = addRerollToken(
+          data.system.rules.map((rule) => {
+            if (rule?.key !== "ChoiceSet") return rule;
+            if (rule.flag === "degreeOfSuccess") return { ...rule, selection: degreeValue };
+            if (rule.flag === "suit") return { ...rule, selection: selector };
+            return rule;
+          })
+        );
 
         data.name = `Harrowing: ${suitLabel(r.chosenSuit)}`;
         return data;
@@ -961,7 +979,7 @@ function getPartyActorUuids() {
       for (const sel of CROWNS_SELECTORS) {
         data.system.rules.push({
           key: "FlatModifier",
-          predicate: ["harrowing-reroll"],
+          predicate: ["harrowing-reroll", `harrowing-reroll:${rerollToken}`],
           removeAfterRoll: "if-enabled",
           selector: sel,
           type: "status",
@@ -973,7 +991,7 @@ function getPartyActorUuids() {
       data.system.rules.push({
         key: "FlatModifier",
         selector: "initiative",
-        predicate: ["harrowing-reroll", "perception"], // only when initiative uses Perception
+        predicate: ["harrowing-reroll", "perception", `harrowing-reroll:${rerollToken}`], // only when initiative uses Perception
         removeAfterRoll: "if-enabled",
         type: "status",
         value: "@item.flags.pf2e.rulesSelections.degreeOfSuccess",

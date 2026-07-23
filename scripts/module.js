@@ -83,6 +83,13 @@ const SUIT_ICON_CLASS = {
  * effect's name, plus the degree of success (+4/0/-4) baked into it at cast
  * time -- see harrowing.js's `bonusFromDegree`. This value never changes
  * after the fact, so a -4 effect will always worsen whatever it's used on.
+ *
+ * Also reads `flags.world.harrowingRerollToken` -- a per-card unique ID
+ * harrowing.js stamps onto newly-cast cards (see that file for why: every
+ * card's trigger condition is otherwise identical, so a reroll targeting
+ * one card would trigger every same-suit card at once). Cards cast before
+ * that fix won't have this flag -- `rerollToken` is null for those, and
+ * they keep the old all-same-suit-cards-at-once behavior until reapplied.
  */
 function getAvailableHarrowingSuits(actor) {
     if (!actor) return [];
@@ -101,7 +108,8 @@ function getAvailableHarrowingSuits(actor) {
             const suit = Object.entries(SUIT_LABELS).find(([, l]) => l === label)?.[0];
             if (!suit) return null;
             const degree = i.flags?.pf2e?.rulesSelections?.degreeOfSuccess ?? 0;
-            return { suit, effectId: i.id, degree };
+            const rerollToken = i.flags?.world?.harrowingRerollToken ?? null;
+            return { suit, effectId: i.id, degree, rerollToken };
         })
         .filter((s) => s !== null);
 }
@@ -165,20 +173,17 @@ function getStatisticSlugFromContext(context) {
 }
 
 /**
- * Best-effort match of the original Strike + MAP variant from the roll
- * context, for the Hammers suit. UNCONFIRMED against a live attack roll --
- * unlike the Statistic path (getStatisticSlugFromContext, confirmed via
- * check:statistic:* roll options), I don't yet know the exact shape
- * PF2e uses to identify "which strike, which variant" on a chat message's
- * context. This tries context.identifier first (seen elsewhere formatted
- * as "<something>.<mapIndex>"), then falls back to the first strike with
- * an unused variant. Expect this specifically may need adjustment after
- * a live test -- flag it if the wrong weapon or MAP level rerolls.
+ * Match the original Strike + MAP variant from the roll context, for the
+ * Hammers suit. Confirmed 2026-07-23 via a live 2nd attack: the MAP level
+ * is its own dedicated field, `context.mapIncreases` (0/1/2) -- not
+ * something that needs parsing out of `identifier`. The strike itself is
+ * still matched via `identifier` (e.g. "xxPF2ExUNARMEDxx.basic-unarmed.melee"
+ * contains the strike's slug, "basic-unarmed", as a substring), which
+ * worked correctly in that same test.
  */
 function findStrikeAndVariant(actor, context) {
     const identifier = context?.identifier ?? "";
-    const mapMatch = identifier.match(/\.(\d+)$/);
-    const variantIndex = mapMatch ? Number(mapMatch[1]) : 0;
+    const variantIndex = context?.mapIncreases ?? 0;
 
     const strikes = actor?.system?.actions ?? [];
     const bySlug = identifier ? strikes.find((a) => identifier.includes(a.slug)) : null;
@@ -194,48 +199,75 @@ function findStrikeAndVariant(actor, context) {
  * old one. Re-uses the real dialog and the real game math -- see the
  * conversation history for why a hand-rolled clone+adjust was rejected.
  *
- * `isReroll: true` in the args is a best-effort attempt to mark the result
- * non-rerollable (mirrors CheckRoll.isReroll / message.isRerollable in
- * PF2e's own roll.ts), so a hero point/mythic point can't be stacked on top
- * of this reroll afterward. UNCONFIRMED whether Statistic/Strike roll()
- * actually threads an arbitrary `isReroll` arg through to the resulting
- * roll's options -- this is the least certain part of this feature.
+ * Blocking a Hero Point reroll from stacking on top: passing `isReroll: true`
+ * directly in the roll args was tried first, but confirmed 2026-07-23 NOT to
+ * propagate through (a live reroll's resulting message showed
+ * `isReroll: false`). Fixed here by capturing the actual message this roll
+ * creates (via a one-time `createChatMessage` hook) and patching its roll's
+ * `options.isReroll` directly afterward, mirroring what `message.isRerollable`
+ * checks in PF2e's own roll.ts.
  *
  * Returns true only if a roll actually completed and the effect was
  * consumed -- false for "cancelled dialog" or "couldn't find what to roll",
  * neither of which should be treated as a used charge.
  */
-async function useHarrowingReroll(actor, effectId, suit, context) {
+async function useHarrowingReroll(actor, effectId, suit, context, rerollToken) {
     const effect = actor.items.get(effectId);
     if (!effect) {
         ui.notifications.warn("That Harrowing reroll has already been used.");
         return false;
     }
 
-    const rollArgs = { extraRollOptions: ["harrowing-reroll"], isReroll: true };
+    // Without a token (a card cast before harrowing.js started stamping one),
+    // this falls back to the old generic toggle, which can still trigger
+    // every same-suit card at once -- see getAvailableHarrowingSuits.
+    const extraRollOptions = rerollToken ? ["harrowing-reroll", `harrowing-reroll:${rerollToken}`] : ["harrowing-reroll"];
+    const rollArgs = { extraRollOptions };
     if (context?.dc) rollArgs.dc = context.dc;
 
+    let newMessageId = null;
+    const hookId = Hooks.once("createChatMessage", (msg) => {
+        newMessageId = msg.id;
+    });
+
     let result = null;
-    if (suit === "hammers") {
-        const found = findStrikeAndVariant(actor, context);
-        if (!found) {
-            ui.notifications.warn("Couldn't find a matching Strike to reroll.");
-            return false;
+    try {
+        if (suit === "hammers") {
+            const found = findStrikeAndVariant(actor, context);
+            if (!found) {
+                ui.notifications.warn("Couldn't find a matching Strike to reroll.");
+                return false;
+            }
+            result = await found.strike.variants[found.variantIndex].roll(rollArgs);
+        } else {
+            const slug = getStatisticSlugFromContext(context);
+            const statistic = slug ? actor.getStatistic(slug) : null;
+            if (!statistic) {
+                ui.notifications.warn("Couldn't determine which statistic to reroll.");
+                return false;
+            }
+            result = await statistic.check.roll(rollArgs);
         }
-        result = await found.strike.variants[found.variantIndex].roll(rollArgs);
-    } else {
-        const slug = getStatisticSlugFromContext(context);
-        const statistic = slug ? actor.getStatistic(slug) : null;
-        if (!statistic) {
-            ui.notifications.warn("Couldn't determine which statistic to reroll.");
-            return false;
-        }
-        result = await statistic.check.roll(rollArgs);
+    } finally {
+        // If the dialog was cancelled, no message got created and the hook
+        // never fired -- remove it manually so it doesn't catch some
+        // unrelated later message instead.
+        if (!newMessageId) Hooks.off("createChatMessage", hookId);
     }
 
     // A null/undefined result means the player cancelled the roll dialog --
     // don't consume the effect in that case.
     if (!result) return false;
+
+    if (newMessageId) {
+        const newMessage = game.messages.get(newMessageId);
+        const roll = newMessage?.rolls?.[0];
+        if (roll) {
+            const rollJson = roll.toJSON();
+            rollJson.options = { ...rollJson.options, isReroll: true };
+            await newMessage.update({ rolls: [JSON.stringify(rollJson)] });
+        }
+    }
 
     await actor.deleteEmbeddedDocuments("Item", [effectId]);
     return true;
@@ -273,7 +305,7 @@ Hooks.on("renderChatMessageHTML", (message, html) => {
         row.className = "harrowing-badge-row";
         row.style.cssText = "display:flex;flex-wrap:wrap;gap:0.35em;margin:0.15em 0 0.35em 0;";
 
-        for (const { suit, effectId, degree } of matches) {
+        for (const { suit, effectId, degree, rerollToken } of matches) {
             const style = badgeStyleForDegree(degree);
             const badge = document.createElement("span");
             badge.className = "harrowing-reroll-badge";
@@ -317,12 +349,12 @@ Hooks.on("renderChatMessageHTML", (message, html) => {
                     if (badge.dataset.harrowingBusy) return;
                     badge.dataset.harrowingBusy = "true";
                     try {
-                        const used = await useHarrowingReroll(actor, effectId, suit, context);
+                        const used = await useHarrowingReroll(actor, effectId, suit, context, rerollToken);
                         if (used) {
-                            // Dim the clicked badge in place as immediate feedback --
-                            // the actual reroll result posts as its own new message.
-                            badge.style.opacity = "0.35";
-                            badge.style.cursor = "default";
+                            // Remove the clicked badge entirely -- the actual
+                            // reroll result posts as its own new message.
+                            badge.remove();
+                            if (!row.childElementCount) row.remove();
                         }
                     } catch (err) {
                         console.warn("Harrowing Helper | reroll failed:", err);
