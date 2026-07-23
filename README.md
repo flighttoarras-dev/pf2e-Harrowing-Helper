@@ -17,6 +17,9 @@ So your GM let you run a Harrowing build? You don't want to spend the entire ses
 - Clears existing Harrowing effects before reapplying (configurable)
 - Highlights chat cards with a suit icon when a Harrowing reroll is available for that roll, colored and bordered by degree of success (Critical Success, Success, Failure)
 - Click a highlighted suit icon to use that reroll immediately — reopens the roll with the Harrowing bonus applied, consuming only that specific card
+<img width="398" height="496" alt="image" src="https://github.com/user-attachments/assets/1dc06621-7456-48bf-b16f-07fd37fc6663" /> <img width="340" height="999" alt="image" src="https://github.com/user-attachments/assets/e7f95e6a-399b-4561-bac8-a31f5326f5eb" /><img width="337" height="224" alt="image" src="https://github.com/user-attachments/assets/438650fe-a3a8-4f19-bf7a-1c0057c0de56" />
+
+
 
 ---
 
