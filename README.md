@@ -17,9 +17,6 @@ So your GM let you run a Harrowing build? You don't want to spend the entire ses
 - Clears existing Harrowing effects before reapplying (configurable)
 - Highlights chat cards with a suit icon when a Harrowing reroll is available for that roll, colored and bordered by degree of success (Critical Success, Success, Failure)
 - Click a highlighted suit icon to use that reroll immediately — reopens the roll with the Harrowing bonus applied, consuming only that specific card
-<img width="398" height="496" alt="image" src="https://github.com/user-attachments/assets/1dc06621-7456-48bf-b16f-07fd37fc6663" /> <img width="340" height="999" alt="image" src="https://github.com/user-attachments/assets/e7f95e6a-399b-4561-bac8-a31f5326f5eb" /><img width="337" height="224" alt="image" src="https://github.com/user-attachments/assets/438650fe-a3a8-4f19-bf7a-1c0057c0de56" />
-
-
 
 ---
 
@@ -75,11 +72,18 @@ Full setup and configuration details are in the **Harrowing Helper — Documenta
 2. Target the intended recipient token (for single-target mode).
 3. Run the **Harrowing** macro.
 4. Configure the setup dialog — apply mode, rank, cast limit — and click OK.
+
+<img width="398" alt="Harrowing setup dialog" src="https://github.com/user-attachments/assets/1dc06621-7456-48bf-b16f-07fd37fc6663" />
+
 5. The macro rolls all checks, draws suits, applies effects, and posts a chat summary.
+
+<img width="340" alt="Harrowing chat summary" src="https://github.com/user-attachments/assets/e7f95e6a-399b-4561-bac8-a31f5326f5eb" />
 
 **Using a reroll**
 
 When a character has an unused Harrowing effect matching a roll they just made (e.g. a Will save with an unused Stars card), a small colored suit icon appears under that roll's chat card. Click it to reroll with the Harrowing bonus applied — this opens the normal roll dialog with the bonus pre-enabled, and only consumes that specific card, even if others of the same suit are also active.
+
+<img width="337" alt="Harrowing reroll badges on a chat card" src="https://github.com/user-attachments/assets/438650fe-a3a8-4f19-bf7a-1c0057c0de56" />
 
 ---
 
